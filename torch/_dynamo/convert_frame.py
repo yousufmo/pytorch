@@ -472,7 +472,6 @@ def _compile(
     # This is shared across restarts
     mutated_closure_cell_contents: Set[str] = set()
     speculation_log = SpeculationLog()
-    torch._dynamo.callback_handler.run_start_callbacks()
 
     @preserve_global_state
     def transform(instructions, code_options):
@@ -771,7 +770,6 @@ def _compile(
                 compliant_custom_ops,
             )
             record_compilation_metrics(metrics)
-            torch._dynamo.callback_handler.run_end_callbacks()
 
 
 def convert_frame(compiler_fn: CompilerFn, hooks: Hooks):

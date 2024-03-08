@@ -44,6 +44,23 @@ void* initP2pState();
 
 void* initTopoInfo(Topology topology, NvlMesh nvlMesh, size_t rank);
 
+AllReduceAlgo selectAllReduceAlgo(
+    const at::Tensor& input,
+    Topology topology,
+    size_t worldSize);
+
+at::Tensor allReduce(
+    const at::Tensor& input,
+    std::array<void*, kMaxDevices> p2pStates,
+    std::array<void*, kMaxDevices> buffers,
+    void* p2pStatesDev,
+    void* buffersDev,
+    void* topoInfo,
+    size_t rank,
+    size_t worldSize,
+    AllReduceAlgo algo,
+    at::cuda::CUDAStream& stream);
+
 ////////////////////////////////////////////////////////////////////////////////
 // Topology Detection
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,8 +229,7 @@ IntraNodeComm::IntraNodeComm(
     void* buffersDev,
     void* topoInfo,
     size_t rank,
-    size_t worldSize,
-    size_t bufferSize)
+    size_t worldSize)
     : topology_(topology),
       p2pStates_(p2pStates),
       buffers_(buffers),
@@ -221,8 +237,7 @@ IntraNodeComm::IntraNodeComm(
       buffersDev_(buffersDev),
       topoInfo_(topoInfo),
       rank_(rank),
-      worldSize_(worldSize),
-      bufferSize_(bufferSize) {}
+      worldSize_(worldSize) {}
 
 IntraNodeComm::~IntraNodeComm() {
   // Intentionally releasing resources without synchronizing devices. The
@@ -290,8 +305,7 @@ c10::intrusive_ptr<IntraNodeComm> IntraNodeComm::rendezvous(
     c10::intrusive_ptr<c10d::Store> store,
     const std::string& prefix,
     size_t rank,
-    size_t worldSize,
-    size_t bufferSize) {
+    size_t worldSize) {
 #if !defined(USE_ROCM) && defined(PYTORCH_C10_DRIVER_API_SUPPORTED)
   if (!isIntraNodeCommSupported() ||
       !getCvarBool(ENABLE_INTRA_NODE_COMM, false) || worldSize < 2 ||
@@ -355,7 +369,7 @@ c10::intrusive_ptr<IntraNodeComm> IntraNodeComm::rendezvous(
 
   // Allocate buffer
   void* buffer = nullptr;
-  AT_CUDA_CHECK(cudaMalloc(&buffer, bufferSize));
+  AT_CUDA_CHECK(cudaMalloc(&buffer, kMaxIntraNodeSize * 2));
 
   // Second handshake: exchange topology and CUDA IPC handles
   struct IpcInfo {
@@ -428,11 +442,43 @@ c10::intrusive_ptr<IntraNodeComm> IntraNodeComm::rendezvous(
       buffersDev,
       topoInfo,
       rank,
-      worldSize,
-      bufferSize);
+      worldSize);
 #else
   return nullptr;
 #endif
+}
+
+AllReduceAlgo IntraNodeComm::selectAllReduceAlgo(const at::Tensor& input) {
+  return c10d::intra_node_comm::selectAllReduceAlgo(
+      input, topology_, worldSize_);
+}
+
+static int64_t usageCounter = 0;
+
+at::Tensor IntraNodeComm::allReduce(
+    const at::Tensor& input,
+    AllReduceAlgo algo) {
+  // Report usage for testing purposes.
+  // We don't care about overflowing.
+  ++usageCounter;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  c10::cuda::CUDACachingAllocator::recordStream(
+      input.storage().data_ptr(), stream);
+  return c10d::intra_node_comm::allReduce(
+      input,
+      p2pStates_,
+      buffers_,
+      p2pStatesDev_,
+      buffersDev_,
+      topoInfo_,
+      rank_,
+      worldSize_,
+      algo,
+      stream);
+}
+
+int64_t getIntraNodeCommUsageCounter() {
+  return usageCounter;
 }
 
 } // namespace intra_node_comm

@@ -3106,7 +3106,7 @@ class NativeCachingAllocator : public CUDAAllocator {
     return cpd;
   }
 
-  DataPtr allocate(size_t size) override {
+  DataPtr allocate(size_t size) const override {
     constexpr size_t one_exa_bytes = 1152921504606846976ULL;
     TORCH_CHECK_WITH(
         OutOfMemoryError,
@@ -3131,7 +3131,9 @@ class NativeCachingAllocator : public CUDAAllocator {
       }
     } else {
       if (size != 0) {
-        this->malloc(&devPtr, device, size, stream);
+        // Allocator declars allocate const!?
+        const_cast<NativeCachingAllocator*>(this)->malloc(
+            &devPtr, device, size, stream);
       }
     }
 
