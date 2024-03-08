@@ -3622,7 +3622,7 @@ class DistributedTest:
                     ]
                     assert self._run_all_gather_coalesced_and_verify(
                         output_tensor_lists, input_tensors, expected_tensors, group_id
-                    ), "output tensors do not match expected outputs"
+                    ), "output tensors do not match expected ouputs"
 
             self._barrier()
 
