@@ -13,13 +13,13 @@ architectures:
 import os
 from typing import Dict, List, Optional, Tuple
 
-CUDA_ARCHES = ["11.8", "12.1"]
+CUDA_ARCHES = ["11.8", "12.1", "12.4"]
 
 
-CUDA_ARCHES_FULL_VERSION = {"11.8": "11.8.0", "12.1": "12.1.1"}
+CUDA_ARCHES_FULL_VERSION = {"11.8": "11.8.0", "12.1": "12.1.1", "12.4": "12.4.0"}
 
 
-CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8"}
+CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8", "12.4":"9"}
 
 
 ROCM_ARCHES = ["5.7", "6.0"]
@@ -367,5 +367,6 @@ def generate_wheels_matrix(
     return ret
 
 
+validate_nccl_dep_consistency("12.2")
 validate_nccl_dep_consistency("12.1")
 validate_nccl_dep_consistency("11.8")
