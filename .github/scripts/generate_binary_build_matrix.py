@@ -19,7 +19,7 @@ CUDA_ARCHES = ["11.8", "12.1", "12.4"]
 CUDA_ARCHES_FULL_VERSION = {"11.8": "11.8.0", "12.1": "12.1.1", "12.4": "12.4.0"}
 
 
-CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8", "12.4":"8"}
+CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8", "12.4": "8"}
 
 
 ROCM_ARCHES = ["5.7", "6.0"]
@@ -375,7 +375,7 @@ def generate_wheels_matrix(
                         ),
                         "pytorch_extra_install_requirements":
                         PYTORCH_EXTRA_INSTALL_REQUIREMENTS[arch_version]  # fmt: skip
-                        if os != "linux" else "",
+                        if os != "linux" and arch_version != "cpu" else "",
                     }
                 )
     return ret
