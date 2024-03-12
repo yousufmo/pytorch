@@ -19,7 +19,7 @@ CUDA_ARCHES = ["11.8", "12.1", "12.4"]
 CUDA_ARCHES_FULL_VERSION = {"11.8": "11.8.0", "12.1": "12.1.1", "12.4": "12.4.0"}
 
 
-CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8", "12.4":"9"}
+CUDA_ARCHES_CUDNN_VERSION = {"11.8": "8", "12.1": "8", "12.4":"8"}
 
 
 ROCM_ARCHES = ["5.7", "6.0"]
@@ -59,19 +59,18 @@ PYTORCH_EXTRA_INSTALL_REQUIREMENTS = {
         "nvidia-nvtx-cu12==12.1.105; platform_system == 'Linux' and platform_machine == 'x86_64'"
     ),
     "12.4": (
-        "nvidia-cuda-nvrtc-cu12==12.3.107; platform_system == 'Linux' and platform_machine == 'x86_64' | " 
+        "nvidia-cuda-nvrtc-cu12==12.4.99; platform_system == 'Linux' and platform_machine == 'x86_64' | "
         "nvidia-cuda-runtime-cu12==12.4.99; platform_system == 'Linux' and platform_machine == 'x86_64' | "
         "nvidia-cuda-cupti-cu12==12.4.99; platform_system == 'Linux' and platform_machine == 'x86_64' | "
-        "nvidia-cudnn-cu12==9.0.0.322; platform_system == 'Linux' and platform_machine == 'x86_64' | "
+        "nvidia-cudnn-cu12==8.9.7.29; platform_system == 'Linux' and platform_machine == 'x86_64' | "
         "nvidia-cublas-cu12==12.4.2.65; platform_system == 'Linux' and platform_machine == 'x86_64' | "
-        "nvidia-cufft-cu12==11.2.0.69; platform_system == 'Linux' and platform_machine == 'x86_64' | "
-        "nvidia-curand-cu12==10.3.4.107; platform_system == 'Linux' and platform_machine == 'x86_64' | "
-        "nvidia-cusolver-cu12==11.6.2.20; platform_system == 'Linux' and platform_machine == 'x86_64' | "
+        "nvidia-cufft-cu12==11.2.0.44; platform_system == 'Linux' and platform_machine == 'x86_64' | "
+        "nvidia-curand-cu12==10.3.5.119; platform_system == 'Linux' and platform_machine == 'x86_64' | "
+        "nvidia-cusolver-cu12==11.6.0.99; platform_system == 'Linux' and platform_machine == 'x86_64' | "
         "nvidia-cusparse-cu12==12.3.0.142; platform_system == 'Linux' and platform_machine == 'x86_64' | "
-        "nvidia-nccl-cu12==2.20.3; platform_system == 'Linux' and platform_machine == 'x86_64' | "
+        "nvidia-nccl-cu12==2.20.5; platform_system == 'Linux' and platform_machine == 'x86_64' | "
         "nvidia-nvtx-cu12==12.4.99; platform_system == 'Linux' and platform_machine == 'x86_64'"
         "nvidia-nvjitlink-cu12==12.4.99; platform_system == 'Linux' and platform_machine == 'x86_64'"
-        "nvidia-dali-cuda120==1.35.0; platform_system == 'Linux' and platform_machine == 'x86_64'"
     ),
 }
 
@@ -339,7 +338,7 @@ def generate_wheels_matrix(
             )
 
             # 12.1 linux wheels require PYTORCH_EXTRA_INSTALL_REQUIREMENTS to install
-            if arch_version in ["12.1", "11.8"] and os == "linux":
+            if arch_version in ["12.4", "12.1", "11.8"] and os == "linux":
                 ret.append(
                     {
                         "python_version": python_version,
@@ -375,7 +374,7 @@ def generate_wheels_matrix(
                             ".", "_"
                         ),
                         "pytorch_extra_install_requirements":
-                        PYTORCH_EXTRA_INSTALL_REQUIREMENTS["12.1"]  # fmt: skip
+                        PYTORCH_EXTRA_INSTALL_REQUIREMENTS[arch_version]  # fmt: skip
                         if os != "linux" else "",
                     }
                 )
