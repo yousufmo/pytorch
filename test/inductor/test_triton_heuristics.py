@@ -71,6 +71,7 @@ class TestTritonHeuristics(TestCase):
         ]
         self.assertEqual(forward(*args), foo_c(*args))
 
+    @serialTest()
     def test_artificial_zgrid(self):
         self._test_artificial_zgrid()
 
