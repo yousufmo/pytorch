@@ -714,6 +714,13 @@ class SymPyValueRangeAnalysis:
     def atan(x):
         return ValueRanges.increasing_map(x, OpaqueUnaryFn_atan)
 
+    @staticmethod
+    def trunc(x):
+        def trunc(x):
+            return sympy.Integer(x) if x.is_finite else x
+
+        return ValueRanges.increasing_map(x, trunc)
+
 
 class ValueRangeAnalysis(SymPyValueRangeAnalysis):
     def __init__(self):
@@ -798,10 +805,7 @@ class ValueRangeAnalysis(SymPyValueRangeAnalysis):
         if x == ValueRanges.unknown():
             return x
 
-        def trunc(x):
-            return sympy.Integer(x) if x.is_finite else x
-
-        return ValueRanges.increasing_map(x, trunc)
+        return cls.trunc(x)
 
     @classmethod
     def sub(cls, a, b):
