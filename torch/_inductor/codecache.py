@@ -19,6 +19,7 @@ import re
 import shlex
 import shutil
 import signal
+import struct
 import subprocess
 import sys
 import sysconfig
@@ -1525,6 +1526,7 @@ def cpp_compile_command(
     aot_mode: bool = False,
     compile_only: bool = False,
     use_absolute_path: bool = False,
+    use_mmap_weights: bool = False,
 ) -> str:
     ipaths, lpaths, libs, macros, build_arch_flags = get_include_and_linking_paths(
         include_pytorch, vec_isa, cuda, aot_mode
@@ -1557,6 +1559,9 @@ def cpp_compile_command(
     if compile_only:
         libs, lpaths = "", ""
     inp_name_str = " ".join(inp_name)
+    if use_mmap_weights:
+        macros += " -D USE_MMAP_SELF"
+
     return re.sub(
         r"[ \n]+",
         " ",
@@ -1634,7 +1639,7 @@ class AotCodeCompiler:
         picked_vec_isa = pick_vec_isa()
         cpp_command = repr(
             cpp_compile_command(
-                "i", "o", vec_isa=picked_vec_isa, cuda=cuda, aot_mode=graph.aot_mode
+                "i", "o", vec_isa=picked_vec_isa, cuda=cuda, aot_mode=graph.aot_mode,
             )
         )
         fbcode_aot_cpu_re = False
@@ -1712,7 +1717,7 @@ class AotCodeCompiler:
             return consts_o
 
         def _compile_consts_darwin(consts: bytes) -> str:
-            is_large_consts = len(consts) > 1024
+            is_large_consts = consts_size > 1024
             consts_asm = "\t.section\t__TEXT,__const\n"
             consts_asm += "\t.globl\t__binary_constants_bin_start\n"
             consts_asm += "__binary_constants_bin_start:\n"
@@ -1769,6 +1774,12 @@ class AotCodeCompiler:
             )
 
             output_o = os.path.splitext(input_path)[0] + ".o"
+            consts_size = sum(
+                tensor.untyped_storage().nbytes()
+                for (name, tensor) in graph.constants.items()
+                if name not in graph.folded_constants
+            )
+            use_mmap_weights = True
             compile_cmd = cpp_compile_command(
                 input=input_path,
                 output=output_o,
@@ -1777,6 +1788,7 @@ class AotCodeCompiler:
                 aot_mode=graph.aot_mode,
                 compile_only=True,
                 use_absolute_path=use_absolute_path,
+                use_mmap_weights=use_mmap_weights,
             )
             log.debug("aot compilation command: %s", compile_cmd)
             if fbcode_aot_cpu_re:
@@ -1801,11 +1813,15 @@ class AotCodeCompiler:
 
                 return bytes(raw_array.contents)
 
-            aot_constants = b"".join(
+            serialized_weights = b"".join(
                 _to_bytes(tensor)
                 for name, tensor in graph.constants.items()
                 if name not in graph.folded_constants
             )
+            if not use_mmap_weights:
+                aot_constants = serialized_weights
+            else:
+                aot_constants = struct.pack("q", consts_size)
             consts_o = {
                 "linux": _compile_consts_linux,
                 "darwin": _compile_consts_darwin,
@@ -1825,6 +1841,12 @@ class AotCodeCompiler:
                 os.chmod(output_so, 0o755)
             else:
                 run_command_and_check(link_cmd)
+
+            if use_mmap_weights:
+                with open(output_so, "a+b") as f:
+                    current_offs = f.tell()
+                    print(f"current_offs={current_offs}")
+                    f.write(serialized_weights)
 
             # Append cmds to the end of codegen-ed wrapper file
             with open(input_path, "a") as f:
