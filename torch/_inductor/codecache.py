@@ -1825,7 +1825,10 @@ class AotCodeCompiler:
             if not use_mmap_weights:
                 aot_constants = serialized_weights
             else:
-                aot_constants = struct.pack("q", consts_size)
+                magic_number = torch.randint(
+                    0, torch.iinfo(torch.int64).max, (1,)
+                ).item()
+                aot_constants = struct.pack("qq", consts_size + 8, magic_number)
             consts_o = {
                 "linux": _compile_consts_linux,
                 "darwin": _compile_consts_darwin,
@@ -1848,9 +1851,11 @@ class AotCodeCompiler:
 
             if use_mmap_weights:
                 with open(output_so, "a+b") as f:
-                    current_offs = f.tell()
-                    print(f"current_offs={current_offs}")
+                    fsize = f.tell()
+                    # Page align the weights
+                    f.write(b" " * (4096 - fsize % 4096))
                     f.write(serialized_weights)
+                    f.write(struct.pack("q", magic_number))
 
             # Append cmds to the end of codegen-ed wrapper file
             with open(input_path, "a") as f:

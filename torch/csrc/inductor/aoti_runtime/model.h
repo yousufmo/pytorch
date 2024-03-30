@@ -261,23 +261,26 @@ class AOTInductorModelBase {
     }
     return internal_ptr;
 #elif USE_MMAP_SELF
+    // get pointer to constant which is packed in model during compile time.
+    AOTI_RUNTIME_CHECK(!skip_copy, "pure cpu mode doesn't support skip copy");
     static uint8_t* self_mmap = NULL;
     if (!self_mmap) {
       Dl_info dl_info;
       // get pointer to constant which are appended to the binary
-      if (!dladdr(__func__, &dl_info)) {
-        throw std::runtime_error("Can't find the symbols");
-      }
-      std::cout << "Current library name is " << dl_info.dli_fname << std::endl;
+      AOTI_RUNTIME_CHECK(
+          dladdr(__func__, &dl_info), "Can't find shared library name");
       int fd = open(dl_info.dli_fname, O_RDONLY);
       auto fsize = lseek(fd, 0, SEEK_END);
       auto weights_size =
           reinterpret_cast<const uint64_t*>(_binary_constants_bin_start)[0];
+      auto magic_number =
+          reinterpret_cast<const uint64_t*>(_binary_constants_bin_start)[1];
       auto ptr = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
-      std::cout << "Current library name is " << dl_info.dli_fname
-                << " and ptr is 0x" << ptr << " fsize is " << fsize
-                << " and weights_size is " << weights_size << std::endl;
       self_mmap = static_cast<uint8_t*>(ptr) + (fsize - weights_size);
+      AOTI_RUNTIME_CHECK(
+          reinterpret_cast<uint64_t*>(
+              self_mmap + weights_size - sizeof(uint64_t))[0] == magic_number,
+          "Weigths data seems corrupt");
     }
     return self_mmap + bytes_read;
 
