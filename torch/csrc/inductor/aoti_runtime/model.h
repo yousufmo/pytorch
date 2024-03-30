@@ -1,13 +1,13 @@
 #pragma once
 
-#include <optional>
-#include <regex>
-#include <unordered_map>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <stdexcept>
 #include <unistd.h>
+#include <optional>
+#include <regex>
+#include <stdexcept>
+#include <unordered_map>
 
 // WARNING: Be careful when adding new includes here. This header will be used
 // in model.so, and should not refer to any aten/c10 headers except the stable
@@ -261,21 +261,23 @@ class AOTInductorModelBase {
     }
     return internal_ptr;
 #elif USE_MMAP_SELF
-    static uint8_t *self_mmap = NULL;
+    static uint8_t* self_mmap = NULL;
     if (!self_mmap) {
-        Dl_info dl_info;
-        // get pointer to constant which are appended to the binary
-        if (!dladdr(__func__, &dl_info)) {
-          throw std::runtime_error("Can't find the symbols");
-        }
-        std::cout << "Current library name is " << dl_info.dli_fname << std::endl;
-        int fd = open(dl_info.dli_fname, O_RDONLY);
-        auto fsize = lseek(fd, 0, SEEK_END);
-        auto weights_size = reinterpret_cast<const uint64_t*>(_binary_constants_bin_start)[0];
-        auto ptr = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
-        std::cout << "Current library name is " << dl_info.dli_fname << " and ptr is 0x" << ptr
-                   << " fsize is " << fsize << " and weights_size is " << weights_size << std::endl;
-        self_mmap = static_cast<uint8_t*>(ptr) + (fsize - weights_size);
+      Dl_info dl_info;
+      // get pointer to constant which are appended to the binary
+      if (!dladdr(__func__, &dl_info)) {
+        throw std::runtime_error("Can't find the symbols");
+      }
+      std::cout << "Current library name is " << dl_info.dli_fname << std::endl;
+      int fd = open(dl_info.dli_fname, O_RDONLY);
+      auto fsize = lseek(fd, 0, SEEK_END);
+      auto weights_size =
+          reinterpret_cast<const uint64_t*>(_binary_constants_bin_start)[0];
+      auto ptr = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
+      std::cout << "Current library name is " << dl_info.dli_fname
+                << " and ptr is 0x" << ptr << " fsize is " << fsize
+                << " and weights_size is " << weights_size << std::endl;
+      self_mmap = static_cast<uint8_t*>(ptr) + (fsize - weights_size);
     }
     return self_mmap + bytes_read;
 

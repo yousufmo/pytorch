@@ -1639,7 +1639,11 @@ class AotCodeCompiler:
         picked_vec_isa = pick_vec_isa()
         cpp_command = repr(
             cpp_compile_command(
-                "i", "o", vec_isa=picked_vec_isa, cuda=cuda, aot_mode=graph.aot_mode,
+                "i",
+                "o",
+                vec_isa=picked_vec_isa,
+                cuda=cuda,
+                aot_mode=graph.aot_mode,
             )
         )
         fbcode_aot_cpu_re = False
