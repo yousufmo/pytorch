@@ -263,7 +263,6 @@ class AOTInductorModelBase {
 #elif USE_MMAP_SELF
     // get pointer to constant which is packed in model during compile time.
     AOTI_RUNTIME_CHECK(!skip_copy, "pure cpu mode doesn't support skip copy");
-    static uint8_t* self_mmap = NULL;
     if (!self_mmap) {
       Dl_info dl_info;
       // get pointer to constant which are appended to the binary
@@ -276,6 +275,7 @@ class AOTInductorModelBase {
       auto magic_number =
           reinterpret_cast<const uint64_t*>(_binary_constants_bin_start)[1];
       auto ptr = mmap(NULL, fsize, PROT_READ, MAP_PRIVATE, fd, 0);
+      close(fd);
       self_mmap = static_cast<uint8_t*>(ptr) + (fsize - weights_size);
       AOTI_RUNTIME_CHECK(
           reinterpret_cast<uint64_t*>(
@@ -473,6 +473,9 @@ class AOTInductorModelBase {
   // Holds the blob storage for constants' at::Tensor for CUDA.
   CUDAPtr constant_blob_;
 #endif // USE_CUDA
+#ifdef USE_MMAP_SELF
+  uint8_t* self_mmap = NULL;
+#endif
 
   // A directory with CUDA binary files, e.g. compiled kernels, etc.
   const std::optional<std::string> cubin_dir_;
