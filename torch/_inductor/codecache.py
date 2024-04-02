@@ -1824,6 +1824,7 @@ class AotCodeCompiler:
             )
             if not use_mmap_weights:
                 aot_constants = serialized_weights
+                magic_number = 0
             else:
                 magic_number = torch.randint(
                     0, torch.iinfo(torch.int64).max, (1,)
@@ -1850,12 +1851,12 @@ class AotCodeCompiler:
                 run_command_and_check(link_cmd)
 
             if use_mmap_weights:
-                with open(output_so, "a+b") as f:
-                    fsize = f.tell()
+                with open(output_so, "a+b") as f_so:
+                    so_size = f_so.tell()
                     # Page align the weights
-                    f.write(b" " * (4096 - fsize % 4096))
-                    f.write(serialized_weights)
-                    f.write(struct.pack("q", magic_number))
+                    f_so.write(b" " * (4096 - so_size % 4096))
+                    f_so.write(serialized_weights)
+                    f_so.write(struct.pack("q", magic_number))
 
             # Append cmds to the end of codegen-ed wrapper file
             with open(input_path, "a") as f:
