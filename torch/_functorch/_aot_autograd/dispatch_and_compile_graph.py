@@ -86,11 +86,46 @@ def aot_dispatch_base_graph(
         fw_only=flat_fn,
     )
 
+    if aot_config.is_export:
+        registered_buffers = {}
+
+        def _hook(_mod, name, buffer):
+            proxy_mode = None
+            for mode in torch.utils._python_dispatch._get_current_dispatch_mode_stack():
+                if isinstance(
+                    mode, torch.fx.experimental.proxy_tensor.ProxyTorchDispatchMode
+                ):
+                    proxy_mode = mode
+            if proxy_mode is not None and isinstance(
+                buffer, torch._subclasses.functional_tensor.FunctionalTensor
+            ):
+                func_to_fake = buffer.from_functional()
+                fake_to_proxy = torch.fx.experimental.proxy_tensor.get_proxy_slot(
+                    func_to_fake, proxy_mode.tracer
+                ).proxy.node
+                registered_buffers[name] = fake_to_proxy.name
+            return buffer
+
+        handle = torch.nn.modules.module.register_module_buffer_registration_hook(_hook)
+
     fw_module = _create_graph(
         fn_to_trace,
         updated_flat_args_subclasses_desugared,
         aot_config=aot_config,
     )
+
+    if aot_config.is_export:
+        fw_module._registered_buffers = registered_buffers  # type: ignore[assignment, possibly-undefined]
+        add_nodes = []
+        output_node = None
+        output_node = list(fw_module.graph.nodes)[-1]
+        for name in registered_buffers.values():
+            for node in fw_module.graph.nodes:
+                if node.name == name:
+                    add_nodes.append(node)
+                    node.users[output_node] = None
+        output_node.args = ((*add_nodes, *output_node.args[0]),)
+        handle.remove()  # type: ignore[possibly-undefined]
 
     # As long as we opted to remove input mutations, then
     # there should be *NO* mutating ops in the graph at this point.
