@@ -1701,6 +1701,9 @@ class CppKernel(Kernel):
             index, itervar
         )
 
+    def var_ranges(self):
+        return dict(zip(self.itervars, self.ranges))
+
     def load(self, name: str, index: sympy.Expr):
         var = self.args.input(name)
         index = self.rename_indexing(index)
