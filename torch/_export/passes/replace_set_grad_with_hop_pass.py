@@ -56,7 +56,7 @@ def _replace_with_hop(node: torch.fx.Node):
         with graph.inserting_before(node):
             get_attr_node = graph.get_attr(node.target)
             get_attr_node.meta["nn_module_stack"] = copy.copy(
-                set_grad_node.meta["nn_module_stack"]
+                set_grad_node.meta.get("nn_module_stack", {})
             )
             output_node = next(iter(reversed(sub_gm.graph.nodes)), None)
             if output_node is not None:
@@ -73,7 +73,7 @@ def _replace_with_hop(node: torch.fx.Node):
                         arg.meta["val"] for arg in output_args
                     )
                     call_func_node.meta["nn_module_stack"] = copy.copy(
-                        set_grad_node.meta["nn_module_stack"]
+                        set_grad_node.meta.get("nn_module_stack", {})
                     )
                     call_func_node.meta["torch_fn"] = (
                         f"{wrap_with_set_grad_enabled.__name__}",
@@ -132,22 +132,34 @@ def replace_set_grad_with_hop_pass(gm: torch.fx.GraphModule):
         if _is_set_grad_enabled_node(node):
             need_replacing = True
 
-    if not need_replacing:
-        return gm
+    if need_replacing:
+        new_gm = sequential_split(gm, _is_set_grad_enabled_node)
 
-    new_gm = sequential_split(gm, _is_set_grad_enabled_node)
+        def _maybe_inline_or_replace_with_hop(node: torch.fx.Node):
+            if _is_set_grad_enabled_sub_mod(node, omit_if_same_with_ambient=True):
+                _replace_with_hop(node)
+            else:
+                _remove_set_grad_and_inline(node)
 
-    def _maybe_inline_or_replace_with_hop(node: torch.fx.Node):
-        if _is_set_grad_enabled_sub_mod(node, omit_if_same_with_ambient=True):
-            _replace_with_hop(node)
-        else:
-            _remove_set_grad_and_inline(node)
+        nodes_map(
+            list(new_gm.graph.nodes),
+            lambda node: (
+                _maybe_inline_or_replace_with_hop(node)
+                if node.op == "call_module"
+                else node
+            ),
+        )
+    else:
+        new_gm = gm
 
-    nodes_map(
-        list(new_gm.graph.nodes),
-        lambda node: _maybe_inline_or_replace_with_hop(node)
-        if node.op == "call_module"
-        else node,
-    )
+    # recursively call
+    for node in new_gm.graph.nodes:
+        if node.op == "get_attr":
+            subgm = getattr(new_gm, node.target)
+            if not isinstance(subgm, torch.fx.GraphModule):
+                continue
+            new_subgm = replace_set_grad_with_hop_pass(subgm)
+            setattr(new_gm, node.target, new_subgm)
+
     new_gm.graph.lint()
     return new_gm
