@@ -2,6 +2,7 @@
 
 import contextlib
 import functools
+import itertools
 import logging
 import types
 
@@ -879,7 +880,6 @@ class AssociativeScanHigherOrderVariable(TorchHigherOrderOperatorVariable):
     def call_function(
         self, tx, args: List[VariableTracker], kwargs: Dict[str, VariableTracker]
     ) -> VariableTracker:
-        from . import NestedUserFunctionVariable, UserFunctionVariable
         from .builder import wrap_fx_proxy
 
         args, kwargs = LazyVariableTracker.realize_all((args, kwargs))
@@ -889,25 +889,19 @@ class AssociativeScanHigherOrderVariable(TorchHigherOrderOperatorVariable):
 
         input, dim, combine_fn = arg_extractor(*args, **kwargs)
 
-        assert isinstance(
-            combine_fn,
-            (
-                UserFunctionVariable,
-                NestedUserFunctionVariable,
-            ),
-        )
-
         # operands
-        if input.python_type() != torch.Tensor:
+        if input.python_type() != list:
             unimplemented(
-                f"Expected input to be a tensor but got {input.python_type()}",
+                f"Expected input to be a list of tensors but got {input.python_type()}",
             )
 
-        input_meta = input.as_proxy().node.meta["example_value"]
+        input_proxy = input.as_proxy()
+        input_meta = [x.node.meta["example_value"] for x in input_proxy]
+
         with tx.fake_mode:
             example_vals = [
-                torch.empty((), device=input_meta.device, dtype=input_meta.dtype)
-                for _ in range(2)
+                torch.empty((), device=meta.device, dtype=meta.dtype)
+                for meta in itertools.chain(input_meta, input_meta)
             ]
 
         # Trace the subgraph
@@ -917,10 +911,10 @@ class AssociativeScanHigherOrderVariable(TorchHigherOrderOperatorVariable):
             sub_args = [
                 wrap_fx_proxy(
                     tx=tx,
-                    proxy=subtracer.create_graph_input(name),
+                    proxy=subtracer.create_graph_input(f"arg{i}"),
                     example_value=example,
                 )
-                for name, example in zip("ab", example_vals)
+                for i, example in enumerate(example_vals)
             ]
 
             combine_result = combine_fn.call_function(tx, sub_args, {})
@@ -929,12 +923,10 @@ class AssociativeScanHigherOrderVariable(TorchHigherOrderOperatorVariable):
                 subtracer.maybe_lift_tracked_freevar_to_input, combine_result_proxies
             )
 
-            tx.output.create_node(
-                "output",
-                "output",
-                (subtracer.create_arg((combine_result_proxies,))),
-                {},
+            output = tuple(
+                subtracer.create_arg(res_proxy) for res_proxy in combine_result_proxies
             )
+            tx.output.create_node("output", "output", (output,), {})
 
         combine_graph = subtracer.graph
         combine_graph.lint()
@@ -944,39 +936,41 @@ class AssociativeScanHigherOrderVariable(TorchHigherOrderOperatorVariable):
                 f"Combine fn had unexpected freevars: {subtracer.lifted_freevars}"
             )
 
-        if combine_result.python_type() != torch.Tensor:
+        if combine_result.python_type() != list:
             unimplemented(
-                f"Expected combine_fn to return a tensor but got {combine_result.python_type()}",
+                f"Expected combine_fn to return a list if tensor but got {combine_result.python_type()}",
             )
 
-        combine_result_meta = combine_result.as_proxy().node.meta["example_value"]
-        if combine_result_meta.device != input_meta.device:
-            unimplemented(
-                f"Expected combine_fn to return a tensor on device {input_meta.device} but "
-                + f"got {combine_result_meta.device}"
-            )
-        if combine_result_meta.dtype != input_meta.dtype:
-            unimplemented(
-                f"Expected combine_fn to return a tensor of {input_meta.dtype} but "
-                + f"got {combine_result_meta.dtype}"
-            )
+        combine_result_proxy = combine_result.as_proxy()
+        for result, inp_meta in zip(combine_result_proxy, input_meta):
+            combine_result_meta = result.node.meta["example_value"]
+            if combine_result_meta.device != inp_meta.device:
+                unimplemented(
+                    f"Expected combine_fn to return a tensor on device {input_meta.device} but "
+                    + f"got {combine_result_meta.device}"
+                )
+            if combine_result_meta.dtype != inp_meta.dtype:
+                unimplemented(
+                    f"Expected combine_fn to return a tensor of {input_meta.dtype} but "
+                    + f"got {combine_result_meta.dtype}"
+                )
 
-        if combine_result_meta.shape != ():
-            unimplemented(
-                f"Expected cond_fn to return a tensor with shape () but got {combine_result_meta.shape}"
-            )
+            if combine_result_meta.shape != ():
+                unimplemented(
+                    f"Expected cond_fn to return a tensor with shape () but got {combine_result_meta.shape}"
+                )
 
         combine_gm = torch.fx.GraphModule(dict(tx.output.nn_modules), combine_graph)
         combine_fn_name = add_subgraph(tx, "scan_combine", combine_gm)
 
         p_args = (
-            input.as_proxy(),
+            input_proxy,
             dim.as_proxy(),
             make_attr(tx, combine_fn_name),
         )
 
         with tx.fake_mode:
-            out_meta = input_meta.clone()
+            out_meta = tuple(x.clone() for x in input_meta)
         return wrap_fx_proxy(
             tx=tx,
             proxy=tx.output.create_proxy(
