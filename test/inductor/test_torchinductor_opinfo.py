@@ -387,6 +387,7 @@ inductor_all_samples = {
     "softmax.with_dtype",
     "index_add",
     "index_copy",
+    "index_reduce.mean",
     "scatter_reduce.sum",
     "select_scatter",
     "squeeze",
