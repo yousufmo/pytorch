@@ -70,6 +70,15 @@ from .utils import (
 from .virtualized import V
 
 if config.is_fbcode():
+    from aiplatform.runtime_environment.runtime_environment_pybind import (
+        RuntimeEnvironment,
+    )
+    runtime_env: RuntimeEnvironment = RuntimeEnvironment()
+    optimus_scuba_log[
+        "model_type"
+    ] = runtime_env.get_root_workflow_model_type_name()
+    optimus_scuba_log["global_rank"] = runtime_env.get_global_rank()
+
     from torch._inductor.fb.utils import time_and_log
 else:
     # no-op decorator
