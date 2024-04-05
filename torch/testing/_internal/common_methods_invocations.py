@@ -5232,6 +5232,8 @@ def sample_inputs_index_reduce(op_info, device, dtype, requires_grad, **kwargs):
     reduces = ('prod', 'mean', 'amin', 'amax')
 
     for shape, include_self, reduce in product(shapes, include_selfs, reduces):
+        if op_info.variant_test_name and op_info.variant_test_name != reduce:
+            continue
         self_shape, src_shape = shape
         # dim. We handle the scalar case
         dim = 1 if len(self_shape) >= 2 else 0
@@ -5255,9 +5257,10 @@ def sample_inputs_index_reduce(op_info, device, dtype, requires_grad, **kwargs):
         src = torch.tensor([[2, 0], [0, 0], [2, 3], [2, 2]], dtype=dtype, device=device, requires_grad=requires_grad)
         idx = torch.tensor([0, 1, 2, 0], dtype=torch.long, device=device)
 
-        yield SampleInput(input,
-                          args=(0, idx, src, 'prod'),
-                          kwargs={'include_self': True})
+        if not op_info.variant_test_name or op_info.variant_test_name == 'prod':
+            yield SampleInput(input,
+                              args=(0, idx, src, 'prod'),
+                              kwargs={'include_self': True})
 
 def sample_inputs_mode(op_info, device, dtype, requires_grad, **kwargs):
     args = (
@@ -16723,6 +16726,11 @@ op_db: List[OpInfo] = [
            dtypes=all_types_and(torch.float16, torch.bfloat16),
            supports_out=True,
            sample_inputs_func=sample_inputs_index_reduce),
+    *(OpInfo('index_reduce',
+             variant_test_name=reduction_type,
+             dtypes=all_types_and(torch.float16, torch.bfloat16),
+             supports_out=True,
+             sample_inputs_func=sample_inputs_index_reduce) for reduction_type in ('mean', 'prod', 'amin', 'amax')),
     OpInfo('__getitem__',
            dtypes=all_types_and_complex_and(torch.bool, torch.float16, torch.bfloat16, torch.chalf),
            # Runs very slowly on slow gradcheck - alternatively reduce input sizes
